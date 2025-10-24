@@ -1,3 +1,9 @@
+// Package web 提供与Node.js和npm下载相关的HTTP操作功能
+// 主要功能包括：
+// - 设置和管理HTTP客户端和代理
+// - 下载Node.js和npm二进制文件
+// - 处理远程文件获取和验证
+// - 解压缩下载的zip文件
 package web
 
 import (
@@ -26,13 +32,16 @@ import (
 	fs "github.com/coreybutler/go-fsutil"
 )
 
-var nvmversion = ""
-var client = &http.Client{}
-var nodeBaseAddress = "https://nodejs.org/dist/"
-var npmBaseAddress = "https://github.com/npm/cli/archive/"
+var nvmversion = ""                                        // 当前NVM版本号
+var client = &http.Client{}                                // HTTP客户端实例
+var nodeBaseAddress = "https://nodejs.org/dist/"           // Node.js官方镜像地址
+var npmBaseAddress = "https://github.com/npm/cli/archive/" // npm官方镜像地址
 
-// var oldNpmBaseAddress = "https://github.com/npm/npm/archive/"
-
+// SetProxy 设置HTTP客户端的代理和SSL验证配置
+// 参数:
+//
+//	p: 代理地址，格式为"http://host:port"
+//	verifyssl: 是否验证SSL证书
 func SetProxy(p string, verifyssl bool) {
 	if p != "" && p != "none" {
 		proxyUrl, _ := url.Parse(p)
@@ -42,6 +51,11 @@ func SetProxy(p string, verifyssl bool) {
 	}
 }
 
+// SetMirrors 设置Node.js和npm的镜像地址
+// 参数:
+//
+//	node_mirror: Node.js镜像地址
+//	npm_mirror: npm镜像地址
 func SetMirrors(node_mirror string, npm_mirror string) {
 	if node_mirror != "" && node_mirror != "none" {
 		nodeBaseAddress = node_mirror
@@ -63,14 +77,31 @@ func SetMirrors(node_mirror string, npm_mirror string) {
 	}
 }
 
+// GetFullNodeUrl 获取完整的Node.js下载URL
+// 参数:
+//
+//	path: 相对路径
+//
+// 返回值: 完整的URL地址
 func GetFullNodeUrl(path string) string {
 	return nodeBaseAddress + path
 }
 
+// GetFullNpmUrl 获取完整的npm下载URL
+// 参数:
+//
+//	path: 相对路径
+//
+// 返回值: 完整的URL地址
 func GetFullNpmUrl(path string) string {
 	return npmBaseAddress + path
 }
 
+// IsLocalIPv6 检查本地是否支持IPv6
+// 返回值:
+//
+//	bool: 是否支持IPv6
+//	error: 检查过程中遇到的错误
 func IsLocalIPv6() (bool, error) {
 	conn, err := net.Dial("tcp", "[::1]:80")
 	if err != nil {
@@ -99,6 +130,12 @@ func IsLocalIPv6() (bool, error) {
 }
 
 // Returns whether the address can be pinged and whether it is using IPv6 or not
+// Ping 检查指定URL是否可访问
+// 参数:
+//
+//	url: 要检查的URL地址
+//
+// 返回值: 是否可访问
 func Ping(url string) bool {
 	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
@@ -120,6 +157,14 @@ func Ping(url string) bool {
 	return false
 }
 
+// Download 下载文件到本地
+// 参数:
+//
+//	url: 文件下载地址
+//	target: 本地保存路径
+//	version: 要下载的版本号(用于回滚)
+//
+// 返回值: 下载是否成功
 func Download(url string, target string, version string) bool {
 	output, err := os.Create(target)
 	if err != nil {
@@ -215,6 +260,15 @@ func Download(url string, target string, version string) bool {
 	return true
 }
 
+// GetNodeJS 下载指定版本的Node.js
+// 参数:
+//
+//	root: 安装根目录
+//	v: 版本号
+//	a: 架构(32/64/arm64)
+//	append: 是否为追加模式
+//
+// 返回值: 下载是否成功
 func GetNodeJS(root string, v string, a string, append bool) bool {
 	utility.DebugLogf("running GetNodeJS with root: %v, v%v, arch: %v, append: %v", root, v, a, append)
 	a = arch.Validate(a)
@@ -318,6 +372,13 @@ func GetNodeJS(root string, v string, a string, append bool) bool {
 
 }
 
+// GetNpm 下载指定版本的npm
+// 参数:
+//
+//	root: 安装根目录
+//	v: 版本号
+//
+// 返回值: 下载是否成功
 func GetNpm(root string, v string) bool {
 	url := GetFullNpmUrl("v" + v + ".zip")
 
@@ -348,6 +409,15 @@ func GetNpm(root string, v string) bool {
 	}
 }
 
+// GetRemoteTextFile 获取远程文本文件内容
+// 参数:
+//
+//	url: 文件URL地址
+//
+// 返回值:
+//
+//	string: 文件内容
+//	error: 获取过程中遇到的错误
 func GetRemoteTextFile(url string) (string, error) {
 	response, httperr := client.Get(url)
 	if httperr != nil {
@@ -368,6 +438,12 @@ func GetRemoteTextFile(url string) (string, error) {
 	return string(contents), nil
 }
 
+// IsNode64bitAvailable 检查指定版本是否有64位支持
+// 参数:
+//
+//	v: 版本号
+//
+// 返回值: 是否支持64位
 func IsNode64bitAvailable(v string) bool {
 	if v == "latest" {
 		return true
@@ -385,6 +461,12 @@ func IsNode64bitAvailable(v string) bool {
 	return true
 }
 
+// IsNodeArm64bitAvailable 检查指定版本是否有ARM64位支持
+// 参数:
+//
+//	v: 版本号
+//
+// 返回值: 是否支持ARM64位
 func IsNodeArm64bitAvailable(v string) bool {
 	if v == "latest" {
 		return true
@@ -406,6 +488,15 @@ func IsNodeArm64bitAvailable(v string) bool {
 	return true
 }
 
+// getNodeUrl 获取Node.js下载URL(内部函数)
+// 参数:
+//
+//	v: 版本号
+//	vpre: 版本前缀
+//	arch: 架构
+//	append: 是否为追加模式
+//
+// 返回值: 下载URL
 func getNodeUrl(v string, vpre string, arch string, append bool) string {
 	a := "x86"
 	if arch == "arm64" {
@@ -441,6 +532,13 @@ func getNodeUrl(v string, vpre string, arch string, append bool) string {
 	return url
 }
 
+// unzip 解压zip文件到指定目录
+// 参数:
+//
+//	src: zip文件路径
+//	dest: 解压目标目录
+//
+// 返回值: 解压过程中遇到的错误
 func unzip(src, dest string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {

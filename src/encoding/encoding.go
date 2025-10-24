@@ -1,3 +1,7 @@
+// Package encoding 提供字符编码检测和转换功能
+// 主要功能包括：
+// - 检测字节内容的字符编码
+// - 将字符串转换为UTF-8编码的字节数组
 package encoding
 
 import (
@@ -7,6 +11,15 @@ import (
 	"github.com/saintfish/chardet"
 )
 
+// DetectCharset 检测字节内容的字符编码
+// 参数:
+//
+//	content: 要检测的字节内容
+//
+// 返回值:
+//
+//	string: 检测到的字符编码名称(如UTF-8, GBK等)
+//	error: 检测过程中遇到的错误
 func DetectCharset(content []byte) (string, error) {
 	detector := chardet.NewTextDetector()
 	result, err := detector.DetectBest(content)
@@ -17,6 +30,12 @@ func DetectCharset(content []byte) (string, error) {
 	return strings.ToUpper(result.Charset), nil
 }
 
+// ToUTF8 将字符串转换为UTF-8编码的字节数组
+// 参数:
+//
+//	content: 要转换的字符串
+//
+// 返回值: UTF-8编码的字节数组
 func ToUTF8(content string) []byte {
 	b := make([]byte, len(content))
 	i := 0

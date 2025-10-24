@@ -1,3 +1,9 @@
+// Package upgrade 提供NVM的升级功能
+// 主要功能包括：
+// - 检查新版本
+// - 下载和验证升级包
+// - 执行升级流程
+// - 处理升级过程中的错误和回滚
 package upgrade
 
 import (
@@ -26,58 +32,76 @@ import (
 )
 
 const (
-	UPDATE_URL = "https://api.github.com/repos/coreybutler/nvm-windows/releases/latest"
-	ALERTS_URL = "https://author.io/nvm4w/feed/alerts"
-	// Color codes
-	yellow = "\033[33m"
-	reset  = "\033[0m"
+	UPDATE_URL = "https://api.github.com/repos/coreybutler/nvm-windows/releases/latest" // GitHub API获取最新版本URL
+	ALERTS_URL = "https://author.io/nvm4w/feed/alerts"                                  // 警告信息获取URL
 
-	// Windows console modes
-	ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
-	FILE_ATTRIBUTE_HIDDEN              = 0x2
-	CREATE_NEW_CONSOLE                 = 0x00000010 // Create a new console for the child process
-	DETACHED_PROCESS                   = 0x00000008 // Detach the child process from the parent
+	// 终端颜色代码
+	yellow = "\033[33m" // 黄色
+	reset  = "\033[0m"  // 重置颜色
 
-	warningIcon = "⚠️"
-	// exclamationIcon = "❗"
+	// Windows控制台模式
+	ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004     // 启用虚拟终端处理
+	FILE_ATTRIBUTE_HIDDEN              = 0x2        // 文件隐藏属性
+	CREATE_NEW_CONSOLE                 = 0x00000010 // 为子进程创建新控制台
+	DETACHED_PROCESS                   = 0x00000008 // 从父进程分离子进程
+
+	warningIcon = "⚠️" // 警告图标
 )
 
+// Notification 表示系统通知的结构体
 type Notification struct {
-	AppID    string   `json:"app_id"`
-	Title    string   `json:"title"`
-	Message  string   `json:"message"`
-	Icon     string   `json:"icon"`
-	Actions  []Action `json:"actions"`
-	Duration string   `json:"duration"`
-	Link     string   `json:"link"`
+	AppID    string   `json:"app_id"`   // 应用ID
+	Title    string   `json:"title"`    // 通知标题
+	Message  string   `json:"message"`  // 通知内容
+	Icon     string   `json:"icon"`     // 图标类型
+	Actions  []Action `json:"actions"`  // 可执行操作列表
+	Duration string   `json:"duration"` // 显示时长
+	Link     string   `json:"link"`     // 相关链接
 }
 
+// Action 表示通知中的可执行操作
 type Action struct {
-	Type  string `json:"type"`
-	Label string `json:"label"`
-	URI   string `json:"uri"`
+	Type  string `json:"type"`  // 操作类型
+	Label string `json:"label"` // 操作显示文本
+	URI   string `json:"uri"`   // 操作目标URI
 }
 
+// display 发送系统通知
+// 参数:
+//
+//	data: 通知内容
 func display(data Notification) {
 	data.AppID = "NVM for Windows"
 	content, _ := json.Marshal(data)
 	go author.Bridge("notify", string(content))
 }
 
+// Update 表示可用的更新信息
 type Update struct {
-	Version         string   `json:"version"`
-	Assets          []string `json:"assets"`
-	Warnings        []string `json:"notices"`
-	VersionWarnings []string `json:"versionNotices"`
-	SourceURL       string   `json:"sourceTpl"`
+	Version         string   `json:"version"`        // 新版本号
+	Assets          []string `json:"assets"`         // 附加资源列表
+	Warnings        []string `json:"notices"`        // 通用警告信息
+	VersionWarnings []string `json:"versionNotices"` // 版本特定警告
+	SourceURL       string   `json:"sourceTpl"`      // 更新包下载URL模板
 }
 
+// Release 表示GitHub发布的版本信息
 type Release struct {
-	Version string                   `json:"name"`
-	Assets  []map[string]interface{} `json:"assets"`
-	Publish time.Time                `json:"published_at"`
+	Version string                   `json:"name"`         // 版本号
+	Assets  []map[string]interface{} `json:"assets"`       // 资源列表
+	Publish time.Time                `json:"published_at"` // 发布时间
 }
 
+// Run 执行升级流程的主函数
+// 参数:
+//
+//	version: 当前版本号
+//
+// 返回值: 升级过程中遇到的错误
+// 功能:
+//   - 检查是否需要显示进度UI
+//   - 设置信号处理
+//   - 启动升级流程
 func Run(version string) error {
 	show_progress := false
 	for _, arg := range os.Args[2:] {
@@ -515,13 +539,14 @@ func run(version string, status chan Status, updateMetadata ...*Update) error {
 	return nil
 }
 
+// Status 表示升级过程中的状态信息
 type Status struct {
-	Text   string
-	Err    error
-	Done   bool
-	Help   bool
-	Cancel bool
-	Warn   string
+	Text   string // 状态文本
+	Err    error  // 错误信息
+	Done   bool   // 是否完成
+	Help   bool   // 是否需要帮助
+	Cancel bool   // 是否取消
+	Warn   string // 警告信息
 }
 
 func (u *Update) Available(sinceVersion string) (string, bool, error) {
@@ -542,6 +567,11 @@ func (u *Update) Available(sinceVersion string) (string, bool, error) {
 	return "", false, nil
 }
 
+// Warn 显示警告信息
+// 参数:
+//
+//	msg: 警告内容
+//	colorized: 是否使用颜色高亮
 func Warn(msg string, colorized ...bool) {
 	if len(colorized) > 0 && colorized[0] {
 		fmt.Println(warningIcon + "  " + highlight(msg))
@@ -550,10 +580,19 @@ func Warn(msg string, colorized ...bool) {
 	}
 }
 
+// Get 获取最新的更新信息
+// 返回值:
+//
+//	*Update: 更新信息
+//	error: 获取过程中遇到的错误
 func Get() (*Update, error) {
 	return checkForUpdate(UPDATE_URL)
 }
 
+// autoupdate 自动执行更新流程(内部函数)
+// 参数:
+//
+//	status: 状态通知通道
 func autoupdate(status chan Status) {
 	currentPath, err := os.Executable()
 	if err != nil {
@@ -688,10 +727,21 @@ exit /b 0
 	os.Exit(0)
 }
 
+// escapeBackslashes 转义路径中的反斜杠(内部函数)
+// 参数:
+//
+//	path: 原始路径
+//
+// 返回值: 转义后的路径
 func escapeBackslashes(path string) string {
 	return strings.Replace(path, "\\", "\\\\", -1)
 }
 
+// tree 显示目录树结构(调试用)
+// 参数:
+//
+//	dir: 目录路径
+//	title: 可选标题
 func tree(dir string, title ...string) {
 	if len(title) > 0 {
 		fmt.Println("\n" + highlight(title[0]))
@@ -704,6 +754,16 @@ func tree(dir string, title ...string) {
 	}
 }
 
+// get 发送HTTP GET请求
+// 参数:
+//
+//	url: 请求URL
+//	verbose: 是否显示详细日志
+//
+// 返回值:
+//
+//	[]byte: 响应内容
+//	error: 请求过程中遇到的错误
 func get(url string, verbose ...bool) ([]byte, error) {
 	if len(verbose) == 0 || verbose[0] {
 		fmt.Printf("  GET %s\n", url)
@@ -731,6 +791,15 @@ func get(url string, verbose ...bool) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
+// checkForUpdate 检查是否有可用更新
+// 参数:
+//
+//	url: 检查更新的URL
+//
+// 返回值:
+//
+//	*Update: 更新信息
+//	error: 检查过程中遇到的错误
 func checkForUpdate(url string) (*Update, error) {
 	u := Update{Assets: []string{}, Warnings: []string{}, VersionWarnings: []string{}}
 	r := Release{}
@@ -808,6 +877,8 @@ func checkForUpdate(url string) (*Update, error) {
 	return &u, nil
 }
 
+// EnableVirtualTerminalProcessing 启用Windows虚拟终端处理
+// 返回值: 操作过程中遇到的错误
 func EnableVirtualTerminalProcessing() error {
 	// Get the handle to the standard output
 	handle := windows.Stdout
@@ -827,6 +898,12 @@ func EnableVirtualTerminalProcessing() error {
 	return nil
 }
 
+// highlight 高亮显示消息(使用黄色)
+// 参数:
+//
+//	message: 要显示的消息
+//
+// 返回值: 高亮后的字符串
 func highlight(message string) string {
 	return fmt.Sprintf("%s%s%s", yellow, message, reset)
 }
@@ -1055,6 +1132,12 @@ func zipDirectory(sourceDir, outputZip string) error {
 	})
 }
 
+// setHidden 设置文件/目录为隐藏属性(Windows系统)
+// 参数:
+//
+//	path: 文件/目录路径
+//
+// 返回值: 操作过程中遇到的错误
 func setHidden(path string) error {
 	// Convert the path to a UTF-16 encoded string
 	lpFileName, err := syscall.UTF16PtrFromString(path)

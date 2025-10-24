@@ -1,7 +1,9 @@
-/**
- * Used under the MIT License.
- * Semver courtesy Benedikt Lang (https://github.com/blang)
- */
+// Package semver 提供语义化版本(Semantic Versioning)解析和比较功能
+// 主要功能包括：
+// - 解析和验证语义化版本字符串
+// - 版本号比较和排序
+// - 预发布版本和构建元数据处理
+// 基于MIT License，原始代码来自Benedikt Lang(https://github.com/blang)
 package semver
 
 import (
@@ -27,15 +29,17 @@ var SPEC_VERSION = Version{
 	Patch: 0,
 }
 
+// Version 表示一个语义化版本
 type Version struct {
-	Major uint64
-	Minor uint64
-	Patch uint64
-	Pre   []*PRVersion
-	Build []string //No Precedence
+	Major uint64       // 主版本号(不兼容的API修改)
+	Minor uint64       // 次版本号(向下兼容的功能新增)
+	Patch uint64       // 修订号(向下兼容的问题修正)
+	Pre   []*PRVersion // 预发布版本标识
+	Build []string     // 构建元数据(不参与版本比较)
 }
 
-// Version to string
+// String 将Version结构体转换为语义化版本字符串
+// 返回值: 格式为"Major.Minor.Patch[-PreRelease][+BuildMetadata]"的字符串
 func (v *Version) String() string {
 	versionArray := []string{
 		strconv.FormatUint(v.Major, 10),
@@ -59,30 +63,56 @@ func (v *Version) String() string {
 	return strings.Join(versionArray, "")
 }
 
-// Checks if v is greater than o.
+// GT 检查当前版本是否大于目标版本
+// 参数:
+//
+//	o: 要比较的目标版本
+//
+// 返回值: 如果当前版本大于目标版本则返回true
 func (v *Version) GT(o *Version) bool {
 	return (v.Compare(o) == 1)
 }
 
-// Checks if v is greater than or equal to o.
+// GTE 检查当前版本是否大于或等于目标版本
+// 参数:
+//
+//	o: 要比较的目标版本
+//
+// 返回值: 如果当前版本大于或等于目标版本则返回true
 func (v *Version) GTE(o *Version) bool {
 	return (v.Compare(o) >= 0)
 }
 
-// Checks if v is less than o.
+// LT 检查当前版本是否小于目标版本
+// 参数:
+//
+//	o: 要比较的目标版本
+//
+// 返回值: 如果当前版本小于目标版本则返回true
 func (v *Version) LT(o *Version) bool {
 	return (v.Compare(o) == -1)
 }
 
-// Checks if v is less than or equal to o.
+// LTE 检查当前版本是否小于或等于目标版本
+// 参数:
+//
+//	o: 要比较的目标版本
+//
+// 返回值: 如果当前版本小于或等于目标版本则返回true
 func (v *Version) LTE(o *Version) bool {
 	return (v.Compare(o) <= 0)
 }
 
-// Compares Versions v to o:
-// -1 == v is less than o
-// 0 == v is equal to o
-// 1 == v is greater than o
+// Compare 比较两个版本
+// 参数:
+//
+//	o: 要比较的目标版本
+//
+// 返回值:
+//
+//	-1: 当前版本小于目标版本
+//	 0: 两个版本相等
+//	 1: 当前版本大于目标版本
 func (v *Version) Compare(o *Version) int {
 	if v.Major != o.Major {
 		if v.Major > o.Major {
@@ -138,7 +168,8 @@ func (v *Version) Compare(o *Version) int {
 	}
 }
 
-// Validates v and returns error in case
+// Validate 检查版本是否有效
+// 返回值: 如果版本无效则返回错误
 func (v *Version) Validate() error {
 	// Major, Minor, Patch already validated using uint64
 
@@ -169,25 +200,45 @@ func (v *Version) Validate() error {
 	return nil
 }
 
-// Alias for Parse, parses version string and returns a validated Version or error
+// New 解析版本字符串并返回Version对象(Parse的别名)
+// 参数:
+//
+//	s: 要解析的版本字符串
+//
+// 返回值:
+//
+//	*Version: 解析后的版本对象
+//	error: 解析过程中遇到的错误
 func New(s string) (*Version, error) {
 	return Parse(s)
 }
 
-// Parses version string and returns a validated Version or error
+// Parse 解析版本字符串并返回Version对象
+// 参数:
+//
+//	s: 要解析的版本字符串
+//
+// 返回值:
+//
+//	*Version: 解析后的版本对象
+//	error: 解析过程中遇到的错误
+//
+// Parse 解析语义版本字符串并返回 Version 结构体
+// 支持的格式: vX.Y.Z[-PR][+build]
 func Parse(s string) (*Version, error) {
+	// 移除版本号前的'v'前缀
 	s = strings.Replace(s, "v", "", 1)
 	if len(s) == 0 {
 		return nil, errors.New("Version string empty")
 	}
 
-	// Split into major.minor.(patch+pr+meta)
+	// 将版本号分割为 major.minor.(patch+pr+meta) 三部分
 	parts := strings.SplitN(s, ".", 3)
 	if len(parts) != 3 {
 		return nil, errors.New("No Major.Minor.Patch elements found")
 	}
 
-	// Major
+	// 解析 major 版本号
 	if !containsOnly(parts[0], numbers) {
 		return nil, fmt.Errorf("Invalid character(s) found in major number %q", parts[0])
 	}
@@ -199,7 +250,7 @@ func Parse(s string) (*Version, error) {
 		return nil, err
 	}
 
-	// Minor
+	// 解析 minor 版本号
 	if !containsOnly(parts[1], numbers) {
 		return nil, fmt.Errorf("Invalid character(s) found in minor number %q", parts[1])
 	}
@@ -211,10 +262,11 @@ func Parse(s string) (*Version, error) {
 		return nil, err
 	}
 
+	// 查找预发布版本和构建元数据的分隔符位置
 	preIndex := strings.Index(parts[2], "-")
 	buildIndex := strings.Index(parts[2], "+")
 
-	// Determine last index of patch version (first of pre or build versions)
+	// 确定 patch 版本的结束位置(预发布版本或构建元数据的开始位置)
 	var subVersionIndex int
 	if preIndex != -1 && buildIndex == -1 {
 		subVersionIndex = preIndex
@@ -223,15 +275,16 @@ func Parse(s string) (*Version, error) {
 	} else if preIndex == -1 && buildIndex == -1 {
 		subVersionIndex = len(parts[2])
 	} else {
-		// if there is no actual pr version but a hyphen inside the build meta data
+		// 处理构建元数据中包含连字符的情况
 		if buildIndex < preIndex {
 			subVersionIndex = buildIndex
-			preIndex = -1 // Build meta data before preIndex found implicates there are no prerelease versions
+			preIndex = -1 // 构建元数据在预发布版本之前表示没有预发布版本
 		} else {
 			subVersionIndex = preIndex
 		}
 	}
 
+	// 解析 patch 版本号
 	if !containsOnly(parts[2][:subVersionIndex], numbers) {
 		return nil, fmt.Errorf("Invalid character(s) found in patch number %q", parts[2][:subVersionIndex])
 	}
@@ -247,7 +300,7 @@ func Parse(s string) (*Version, error) {
 	v.Minor = minor
 	v.Patch = patch
 
-	// There are PreRelease versions
+	// 解析预发布版本(如果有)
 	if preIndex != -1 {
 		var preRels string
 		if buildIndex != -1 {
@@ -265,7 +318,7 @@ func Parse(s string) (*Version, error) {
 		}
 	}
 
-	// There is build meta data
+	// 解析构建元数据(如果有)
 	if buildIndex != -1 {
 		buildStr := parts[2][buildIndex+1:]
 		buildParts := strings.Split(buildStr, ".")
@@ -283,14 +336,22 @@ func Parse(s string) (*Version, error) {
 	return v, nil
 }
 
-// PreRelease Version
+// PRVersion 表示预发布版本信息
 type PRVersion struct {
-	VersionStr string
-	VersionNum uint64
-	IsNum      bool
+	VersionStr string // 字符串形式的版本标识
+	VersionNum uint64 // 数字形式的版本标识
+	IsNum      bool   // 是否为数字版本
 }
 
-// Creates a new valid prerelease version
+// NewPRVersion 创建新的预发布版本对象
+// 参数:
+//
+//	s: 预发布版本字符串
+//
+// 返回值:
+//
+//	*PRVersion: 创建的预发布版本对象
+//	error: 创建过程中遇到的错误
 func NewPRVersion(s string) (*PRVersion, error) {
 	if len(s) == 0 {
 		return nil, errors.New("Prerelease is empty")
@@ -317,15 +378,22 @@ func NewPRVersion(s string) (*PRVersion, error) {
 	return v, nil
 }
 
-// Is pre release version numeric?
+// IsNumeric 检查预发布版本是否为数字版本
+// 返回值: 如果是数字版本则返回true
 func (v *PRVersion) IsNumeric() bool {
 	return v.IsNum
 }
 
-// Compares PreRelease Versions v to o:
-// -1 == v is less than o
-// 0 == v is equal to o
-// 1 == v is greater than o
+// Compare 比较两个预发布版本
+// 参数:
+//
+//	o: 要比较的目标预发布版本
+//
+// 返回值:
+//
+//	-1: 当前版本小于目标版本
+//	 0: 两个版本相等
+//	 1: 当前版本大于目标版本
 func (v *PRVersion) Compare(o *PRVersion) int {
 	if v.IsNum && !o.IsNum {
 		return -1
@@ -350,7 +418,8 @@ func (v *PRVersion) Compare(o *PRVersion) int {
 	}
 }
 
-// PreRelease version to string
+// String 将预发布版本转换为字符串
+// 返回值: 预发布版本的字符串表示
 func (v *PRVersion) String() string {
 	if v.IsNum {
 		return strconv.FormatUint(v.VersionNum, 10)
@@ -358,17 +427,38 @@ func (v *PRVersion) String() string {
 	return v.VersionStr
 }
 
+// containsOnly 检查字符串是否只包含指定字符集中的字符(内部函数)
+// 参数:
+//
+//	s: 要检查的字符串
+//	set: 允许的字符集
+//
+// 返回值: 如果字符串只包含指定字符则返回true
 func containsOnly(s string, set string) bool {
 	return strings.IndexFunc(s, func(r rune) bool {
 		return !strings.ContainsRune(set, r)
 	}) == -1
 }
 
+// hasLeadingZeroes 检查字符串是否有前导零(内部函数)
+// 参数:
+//
+//	s: 要检查的字符串
+//
+// 返回值: 如果有前导零则返回true
 func hasLeadingZeroes(s string) bool {
 	return len(s) > 1 && s[0] == '0'
 }
 
-// Creates a new valid build version
+// NewBuildVersion 创建新的构建版本元数据(内部函数)
+// 参数:
+//
+//	s: 构建元数据字符串
+//
+// 返回值:
+//
+//	string: 验证后的构建元数据
+//	error: 创建过程中遇到的错误
 func NewBuildVersion(s string) (string, error) {
 	if len(s) == 0 {
 		return "", errors.New("Buildversion is empty")

@@ -1,3 +1,9 @@
+// Package node 提供Node.js版本管理相关功能
+// 主要功能包括：
+// - 获取当前安装的Node.js版本信息
+// - 检查版本是否已安装/可用
+// - 管理已安装版本列表
+// - 获取远程可用版本信息
 package node
 
 import (
@@ -16,11 +22,11 @@ import (
 	"github.com/blang/semver"
 )
 
-/**
- * Returns version, architecture
- */
-// GetCurrentVersion 获取当前安装的Node.js版本和架构信息
-// 返回: (版本号, 架构) 或 ("Unknown", "") 如果获取失败
+// GetCurrentVersion 获取当前使用的Node.js版本和架构信息
+// 返回值:
+//
+//	string: 版本号(如"12.18.3")，如果获取失败返回"Unknown"
+//	string: 架构("32"/"64"/"arm64")，如果获取失败返回空字符串
 func GetCurrentVersion() (string, string) {
 	// 获取Node.js版本号
 	cmd := exec.Command("node", "-v")
@@ -57,6 +63,14 @@ func GetCurrentVersion() (string, string) {
 	return "Unknown", ""
 }
 
+// IsVersionInstalled 检查指定版本的Node.js是否已安装
+// 参数:
+//
+//	root: NVM安装根目录
+//	version: 要检查的版本号
+//	cpu: 架构类型("32"/"64"/"arm64"/"all")
+//
+// 返回值: 是否已安装
 func IsVersionInstalled(root string, version string, cpu string) bool {
 	e32 := file.Exists(root + "\\v" + version + "\\node32.exe")
 	e64 := file.Exists(root + "\\v" + version + "\\node64.exe")
@@ -82,6 +96,12 @@ func IsVersionInstalled(root string, version string, cpu string) bool {
 	return false
 }
 
+// IsVersionAvailable 检查指定版本的Node.js是否可从远程获取
+// 参数:
+//
+//	v: 要检查的版本号
+//
+// 返回值: 是否可用
 func IsVersionAvailable(v string) bool {
 	// Check the service to make sure the version is available
 	avail, _, _, _, _, _ := GetAvailable()
@@ -103,15 +123,29 @@ func reverseStringArray(str []string) []string {
 	return str
 }
 
+// GetInstalled 获取已安装的所有Node.js版本列表(按版本号降序排列)
+// 参数:
+//
+//	root: NVM安装根目录
+//
+// 返回值: 已安装版本列表(格式如["v12.18.3", "v10.22.0"])
+// GetInstalled 获取指定目录下安装的所有Node.js版本
+// 返回格式为 ["v1.2.3", "v4.5.6"] 的字符串数组
 func GetInstalled(root string) []string {
+	// 初始化版本列表
 	list := make([]semver.Version, 0)
+	// 读取目录下所有文件
 	files, _ := ioutil.ReadDir(root)
 
+	// 倒序遍历文件，确保最新版本在前
 	for i := len(files) - 1; i >= 0; i-- {
+		// 检查是否为目录或符号链接
 		if files[i].IsDir() || (files[i].Mode()&os.ModeSymlink == os.ModeSymlink) {
+			// 检查文件名是否以"v"开头(表示Node.js版本目录)
 			isnode, _ := regexp.MatchString("v", files[i].Name())
 
 			if isnode {
+				// 移除"v"前缀并解析为语义化版本
 				currentVersionString := strings.Replace(files[i].Name(), "v", "", 1)
 				currentVersion, _ := semver.Make(currentVersionString)
 
@@ -120,20 +154,23 @@ func GetInstalled(root string) []string {
 		}
 	}
 
+	// 对版本进行排序
 	semver.Sort(list)
 
+	// 准备可输出的版本字符串列表
 	loggableList := make([]string, 0)
-
+	// 为每个版本添加"v"前缀
 	for _, version := range list {
 		loggableList = append(loggableList, "v"+version.String())
 	}
 
+	// 反转数组使最新版本在前
 	loggableList = reverseStringArray(loggableList)
 
 	return loggableList
 }
 
-// Sorting
+// BySemanticVersion 用于按语义化版本排序的字符串切片类型
 type BySemanticVersion []string
 
 func (s BySemanticVersion) Len() int {
@@ -150,7 +187,12 @@ func (s BySemanticVersion) Less(i, j int) bool {
 	return v1.GTE(v2)
 }
 
-// Identifies a version as "LTS"
+// isLTS 检查版本是否为LTS(长期支持)版本(内部函数)
+// 参数:
+//
+//	element: 版本信息map
+//
+// 返回值: 是否为LTS版本
 func isLTS(element map[string]interface{}) bool {
 	switch datatype := element["lts"].(type) {
 	case bool:
@@ -161,7 +203,12 @@ func isLTS(element map[string]interface{}) bool {
 	return false
 }
 
-// Identifies a version as "current"
+// isCurrent 检查版本是否为当前版本(非LTS的最新版本)(内部函数)
+// 参数:
+//
+//	element: 版本信息map
+//
+// 返回值: 是否为当前版本
 func isCurrent(element map[string]interface{}) bool {
 	if isLTS(element) {
 		return false
@@ -178,7 +225,14 @@ func isCurrent(element map[string]interface{}) bool {
 	// return version.Major%2 == 1
 }
 
-// Identifies a stable old version.
+// isStable 检查版本是否为稳定旧版本(内部函数)
+// 参数:
+//
+//	element: 版本信息map
+//
+// 返回值: 是否为稳定旧版本
+// isStable 判断给定的Node版本是否是稳定版
+// 稳定版的条件：1.不是当前版本 2.主版本号为0 3.次版本号为偶数
 func isStable(element map[string]interface{}) bool {
 	if isCurrent(element) {
 		return false
@@ -193,7 +247,12 @@ func isStable(element map[string]interface{}) bool {
 	return version.Minor%2 == 0
 }
 
-// Identifies an unstable old version.
+// isUnstable 检查版本是否为不稳定旧版本(内部函数)
+// 参数:
+//
+//	element: 版本信息map
+//
+// 返回值: 是否为不稳定旧版本
 func isUnstable(element map[string]interface{}) bool {
 	if isStable(element) {
 		return false
@@ -208,7 +267,18 @@ func isUnstable(element map[string]interface{}) bool {
 	return version.Minor%2 != 0
 }
 
-// Retrieve the remotely available versions
+// GetAvailable 获取远程可用的Node.js版本信息
+// 返回值:
+//
+//	[]string: 所有可用版本
+//	[]string: LTS版本
+//	[]string: 当前版本
+//	[]string: 稳定旧版本
+//	[]string: 不稳定旧版本
+//	map[string]string: 各版本对应的npm版本
+//
+// GetAvailable 获取所有可用的Node.js版本信息
+// 返回: all(所有版本), lts(长期支持版), current(当前版), stable(稳定版), unstable(不稳定版), npm(版本对应的npm版本)
 func GetAvailable() ([]string, []string, []string, []string, []string, map[string]string) {
 	all := make([]string, 0)
 	lts := make([]string, 0)
@@ -218,7 +288,7 @@ func GetAvailable() ([]string, []string, []string, []string, []string, map[strin
 	npm := make(map[string]string)
 	url := web.GetFullNodeUrl("index.json")
 
-	// Check the service to make sure the version is available
+	// 从远程获取版本列表JSON文件
 	text, err := web.GetRemoteTextFile(url)
 	if err != nil {
 		fmt.Println(err)
@@ -229,7 +299,7 @@ func GetAvailable() ([]string, []string, []string, []string, []string, map[strin
 		os.Exit(0)
 	}
 
-	// Parse
+	// 解析JSON数据到map切片
 	var data = make([]map[string]interface{}, 0)
 	err = json.Unmarshal([]byte(text), &data)
 	if err != nil {
@@ -237,14 +307,16 @@ func GetAvailable() ([]string, []string, []string, []string, []string, map[strin
 		os.Exit(1)
 	}
 
+	// 遍历所有版本数据并分类
 	for _, element := range data {
-		var version = element["version"].(string)[1:]
+		var version = element["version"].(string)[1:] // 去掉版本号前的'v'
 		all = append(all, version)
 
 		if val, ok := element["npm"].(string); ok {
-			npm[version] = val
+			npm[version] = val // 记录版本对应的npm版本
 		}
 
+		// 根据版本类型分类
 		if isLTS(element) {
 			lts = append(lts, version)
 		} else if isCurrent(element) {

@@ -1,3 +1,9 @@
+// Package main 实现了一个Windows平台的Node版本管理器(NVM)
+// 主要功能包括：
+// - Node.js版本的安装、卸载和切换
+// - 多版本管理
+// - 环境配置
+// - 自动更新检查
 package main
 
 import (
@@ -31,8 +37,6 @@ import (
 
 	"github.com/blang/semver"
 
-	// "github.com/fatih/color"
-
 	"github.com/coreybutler/go-where"
 	"github.com/ncruces/zenity"
 	"github.com/olekukonko/tablewriter"
@@ -40,77 +44,99 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// Replaced at build time
+// NvmVersion 表示当前NVM的版本号
+// 在构建时会被替换为实际版本号
 var NvmVersion = "1.2.3"
 
+// Environment 结构体存储NVM的环境配置
 type Environment struct {
-	settings        string
-	root            string
-	symlink         string
-	arch            string
-	node_mirror     string
-	npm_mirror      string
-	proxy           string
-	originalpath    string
-	originalversion string
-	verifyssl       bool
+	settings        string // 设置文件路径
+	root            string // NVM根目录
+	symlink         string // 符号链接路径
+	arch            string // 系统架构(32/64位)
+	node_mirror     string // Node.js镜像地址
+	npm_mirror      string // npm镜像地址
+	proxy           string // 代理设置
+	originalpath    string // 原始PATH环境变量
+	originalversion string // 原始Node.js版本
+	verifyssl       bool   // 是否验证SSL证书
 }
 
+// home 存储NVM设置文件路径
 var home = filepath.Clean(os.Getenv("NVM_HOME") + "\\settings.txt")
+
+// symlink 存储Node.js符号链接路径
 var symlink = filepath.Clean(os.Getenv("NVM_SYMLINK"))
 
+// env 是全局环境配置实例
 var env = &Environment{
-	settings:        home,
-	root:            "",
-	symlink:         symlink,
-	arch:            strings.ToLower(os.Getenv("PROCESSOR_ARCHITECTURE")),
-	node_mirror:     "",
-	npm_mirror:      "",
-	proxy:           "none",
-	originalpath:    "",
-	originalversion: "",
-	verifyssl:       true,
+	settings:        home,                                                 // 设置文件路径
+	root:            "",                                                   // NVM根目录(初始化时为空)
+	symlink:         symlink,                                              // 符号链接路径
+	arch:            strings.ToLower(os.Getenv("PROCESSOR_ARCHITECTURE")), // 系统架构
+	node_mirror:     "",                                                   // Node.js镜像地址(默认为空)
+	npm_mirror:      "",                                                   // npm镜像地址(默认为空)
+	proxy:           "none",                                               // 代理设置(默认无代理)
+	originalpath:    "",                                                   // 原始PATH环境变量(初始化时为空)
+	originalversion: "",                                                   // 原始Node.js版本(初始化时为空)
+	verifyssl:       true,                                                 // SSL验证(默认开启)
 }
 
+// writeToErrorLog 将错误信息写入错误日志文件
+// 参数:
+//
+//	i: 要记录的任意错误信息
+//	abort: 可选参数，如果为true则打印错误并退出程序
 func writeToErrorLog(i interface{}, abort ...bool) {
+	// 获取可执行文件路径
 	exe, _ := os.Executable()
+	// 打开或创建错误日志文件
 	file, err := os.OpenFile(filepath.Join(filepath.Dir(exe), "error.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}
 	defer file.Close()
 
+	// 格式化错误信息
 	msg := fmt.Sprintf("%v\n", i)
+	// 写入错误日志
 	if _, ferr := file.WriteString(msg); ferr != nil {
 		panic(ferr)
 	}
 
+	// 如果需要终止程序，打印错误并退出
 	if len(abort) > 0 && abort[0] {
 		fmt.Println(msg)
 		os.Exit(1)
 	}
 }
 
+// Notification 定义了桌面通知的结构
 type Notification struct {
-	AppID    string   `json:"app_id"`
-	Title    string   `json:"title"`
-	Message  string   `json:"message"`
-	Icon     string   `json:"icon"`
-	Actions  []Action `json:"actions"`
-	Duration string   `json:"duration"`
-	Link     string   `json:"link"`
+	AppID    string   `json:"app_id"`   // 应用ID
+	Title    string   `json:"title"`    // 通知标题
+	Message  string   `json:"message"`  // 通知内容
+	Icon     string   `json:"icon"`     // 图标类型
+	Actions  []Action `json:"actions"`  // 可操作按钮
+	Duration string   `json:"duration"` // 显示时长
+	Link     string   `json:"link"`     // 关联链接
 }
 
+// Action 定义了通知中的操作按钮
 type Action struct {
-	Type  string `json:"type"`
-	Label string `json:"label"`
-	URI   string `json:"uri"`
+	Type  string `json:"type"`  // 操作类型
+	Label string `json:"label"` // 按钮标签
+	URI   string `json:"uri"`   // 操作URI
 }
 
+// notify 发送桌面通知
+// 参数:
+//
+//	data: 包含通知信息的Notification结构体
 func notify(data Notification) {
-	data.AppID = "NVM for Windows"
-	content, _ := json.Marshal(data)
-	go author.Bridge("notify", string(content))
+	data.AppID = "NVM for Windows"              // 设置应用ID
+	content, _ := json.Marshal(data)            // 序列化为JSON
+	go author.Bridge("notify", string(content)) // 通过作者桥接发送通知
 }
 
 func init() {
@@ -1811,23 +1837,31 @@ func help() {
 // ===============================================================
 // BEGIN | Utility functions
 // ===============================================================
+// checkVersionExceedsLatest 检查指定版本是否超过最新版本
+// 参数version: 要比较的版本号字符串
+// 返回值: 如果指定版本高于最新版本返回true，否则返回false
 func checkVersionExceedsLatest(version string) bool {
-	//content := web.GetRemoteTextFile("http://nodejs.org/dist/latest/SHASUMS256.txt")
+	// 获取最新版本的SHASUMS256.txt文件内容
 	url := web.GetFullNodeUrl("latest/SHASUMS256.txt")
 	content, err := web.GetRemoteTextFile(url)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	re := regexp.MustCompile("node-v(.+)+msi")
-	reg := regexp.MustCompile("node-v|-[xa].+")
+
+	// 使用正则表达式提取最新版本号
+	re := regexp.MustCompile("node-v(.+)+msi")  // 匹配node-v开头的msi安装包
+	reg := regexp.MustCompile("node-v|-[xa].+") // 用于清理版本号字符串
 	latest := reg.ReplaceAllString(re.FindString(content), "")
+
+	// 将版本号拆分为数字数组进行比较
 	var vArr = strings.Split(version, ".")
 	var lArr = strings.Split(latest, ".")
 	for index := range lArr {
-		lat, _ := strconv.Atoi(lArr[index])
-		ver, _ := strconv.Atoi(vArr[index])
-		//Should check for valid input (checking for conversion errors) but this tool is made to trust the user
+		lat, _ := strconv.Atoi(lArr[index]) // 最新版本号段
+		ver, _ := strconv.Atoi(vArr[index]) // 当前版本号段
+
+		// 逐段比较版本号
 		if ver < lat {
 			return false
 		} else if ver > lat {
