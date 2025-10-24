@@ -19,16 +19,25 @@ import (
 /**
  * Returns version, architecture
  */
+// GetCurrentVersion 获取当前安装的Node.js版本和架构信息
+// 返回: (版本号, 架构) 或 ("Unknown", "") 如果获取失败
 func GetCurrentVersion() (string, string) {
+	// 获取Node.js版本号
 	cmd := exec.Command("node", "-v")
 	str, err := cmd.Output()
 	if err == nil {
+		// 清理版本号字符串，去除"v"前缀和后续描述
 		v := strings.Trim(regexp.MustCompile("-.*$").ReplaceAllString(regexp.MustCompile("v").ReplaceAllString(strings.Trim(string(str), " \n\r"), ""), ""), " \n\r")
+
+		// 获取Node.js可执行文件路径
 		cmd := exec.Command("node", "-p", "console.log(process.execPath)")
 		str, _ := cmd.Output()
 		file := strings.Trim(regexp.MustCompile("undefined").ReplaceAllString(string(str), ""), " \n\r")
+
+		// 通过文件路径获取架构信息
 		bit := arch.Bit(file)
 		if bit == "?" {
+			// 如果无法通过文件获取架构，则直接查询Node.js进程架构
 			cmd := exec.Command("node", "-e", "console.log(process.arch)")
 			str, err := cmd.Output()
 			if err == nil {
