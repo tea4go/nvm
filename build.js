@@ -6,15 +6,15 @@ const {version} = data
 const output = content.replaceAll('{{VERSION}}', version)
 await Deno.writeTextFile('./.tmp.iss', output)
 
-console.log('Viewing /.tmp.iss')
-output.split("\n").forEach((line, num) => {
-  let n = `${num+1}`
-  while (n.length < 3) {
-    n = ' ' + n
-  }
+// console.log('Viewing /.tmp.iss')
+// output.split("\n").forEach((line, num) => {
+//   let n = `${num+1}`
+//   while (n.length < 3) {
+//     n = ' ' + n
+//   }
 
-  console.log(`${n} | ${line}`)
-})
+//   console.log(`${n} | ${line}`)
+// })
 
 const command = await new Deno.Command('.\\assets\\buildtools\\iscc.exe', {
   args: ['.\\.tmp.iss'],
