@@ -41,7 +41,7 @@ import (
 )
 
 // Replaced at build time
-var NvmVersion = ""
+var NvmVersion = "1.2.3"
 
 type Environment struct {
 	settings        string
@@ -403,11 +403,17 @@ type Status struct {
 	Help bool
 }
 
+// rollback 回滚指定版本的Node.js安装
+// version: 要回滚的Node.js版本号
+// 返回值: 错误信息，如果回滚成功则返回nil
 func rollback(version string) error {
+	// 构造目标版本路径
 	p := filepath.Join(env.root, "v"+version)
 
+	// 检查路径是否存在
 	_, err := os.Lstat(p)
 	if err != nil {
+		// 如果错误不是"文件不存在"，则记录错误并返回
 		if !os.IsNotExist(err) {
 			writeToErrorLog(err)
 			return fmt.Errorf("Error rolling back node v%s installation: %v.", version, err)
@@ -1075,34 +1081,46 @@ func isSymlink(path string) (bool, error) {
 	return info.Mode()&os.ModeSymlink != 0, nil
 }
 
+// use 函数用于切换 Node.js 版本
+// version: 要切换到的版本号
+// cpuarch: 目标架构 ("32" 或 "64")
+// reload: 可选参数，控制是否重新加载
 func use(version string, cpuarch string, reload ...bool) {
+	// 获取规范化后的版本号和架构
 	version, cpuarch, err := getVersion(version, cpuarch, true)
 
+	// 初始化退出码、状态通道和等待组
 	exitCode := 0
 	status := make(chan Status)
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
+	// 检查是否启用通知功能
 	notifications := false
 
+	// 检查命令行参数是否包含通知标志
 	if os.Args[len(os.Args)-1] == "--notify" {
 		notifications = true
 	}
 
+	// 启动goroutine处理状态通知
 	go func() {
 		defer func() {
+			// 如果有通知，延迟1秒确保通知显示
 			if notifications {
 				time.Sleep(1 * time.Second)
 			}
 			wg.Done()
 		}()
 
+		// 持续监听状态通道
 		for {
 			select {
 			case s := <-status:
+				// 处理错误状态
 				if s.Err != nil {
 					exitCode = 1
 					if notifications {
-						// Close progress dialog and send error notificaion
+						// 发送错误通知
 						notify(Notification{
 							Title:   "Node.js Activation Error",
 							Message: fmt.Sprintf("nvm use %s failed because %v", version, s.Err),
@@ -1110,6 +1128,7 @@ func use(version string, cpuarch string, reload ...bool) {
 						})
 					}
 
+					// 打印错误信息并在需要时显示帮助
 					fmt.Printf("activation error: %v\n", s.Err)
 					if s.Help {
 						fmt.Println(" ")
@@ -1119,9 +1138,11 @@ func use(version string, cpuarch string, reload ...bool) {
 					return
 				}
 
+				// 处理完成状态
 				if s.Done {
 					if s.Err == nil {
 						if notifications {
+							// 发送成功通知
 							notify(Notification{
 								Title:   "Node.js Activated",
 								Message: fmt.Sprintf("Your system is now configured to use v%s (%v-bit).", version, cpuarch),
@@ -1132,12 +1153,14 @@ func use(version string, cpuarch string, reload ...bool) {
 							})
 						}
 
+						// 打印成功信息
 						fmt.Printf("Now using node v%s (%v-bit)\n", version, cpuarch)
 					}
 
 					return
 				}
 
+				// 打印非空状态文本
 				if len(strings.TrimSpace(s.Text)) > 0 {
 					fmt.Println(s.Text)
 				}
@@ -1145,44 +1168,50 @@ func use(version string, cpuarch string, reload ...bool) {
 		}
 	}()
 
+	// 短暂延迟确保状态监听器已启动
 	time.Sleep(300 * time.Millisecond)
 
+	// 启动goroutine执行版本切换操作
 	go func() {
+		// 处理初始错误
 		if err != nil {
 			if !strings.Contains(err.Error(), "No Major.Minor.Patch") {
 				status <- Status{Err: err, Done: true}
 			}
 		}
 
-		// Check if a change is needed
+		// 检查是否需要切换版本
 		curVersion, curCpuarch := node.GetCurrentVersion()
 		if version == curVersion && cpuarch == curCpuarch {
+			// 当前已是目标版本，直接返回
 			fmt.Println("node v" + version + " (" + cpuarch + "-bit) is already in use.")
 			status <- Status{Done: true}
 			return
 		}
 
-		// Make sure the version is installed. If not, warn.
+		// 确保目标版本已安装
 		if !node.IsVersionInstalled(env.root, version, cpuarch) {
 			err = fmt.Errorf("node v%s (%v-bit) is not installed.", version, cpuarch)
 			if notifications {
 				status <- Status{Err: err, Done: true}
 			}
+			// 检查是否有相同版本但不同架构的安装
 			if (cpuarch == "32" && node.IsVersionInstalled(env.root, version, "64")) || (cpuarch == "64" && node.IsVersionInstalled(env.root, version, "32")) {
 				status <- Status{Err: fmt.Errorf("Did you mean node v%s (%v-bit)?\nIf so, type \"nvm use %s %v\" to use it.", version, cpuarch, version, cpuarch), Done: true}
 			}
 			status <- Status{Err: fmt.Errorf("Version not installed. Run \"nvm ls\" to see available versions."), Done: true}
 		}
 
-		// Remove symlink if it already exists
+		// 移除已存在的符号链接
 		sym, _ := os.Lstat(env.symlink)
 		if sym != nil {
+			// 验证符号链接有效性
 			err = validSymlink(env.symlink)
 			if err != nil {
 				status <- Status{Err: err, Done: true}
 			}
 
-			// _, err := runElevated(fmt.Sprintf(`"%s" cmd /C rmdir "%s"`, filepath.Join(env.root, "elevate.cmd"), filepath.Clean(env.symlink)))
+			// 使用提升权限删除符号链接
 			_, err := elevatedRun("rmdir", filepath.Clean(env.symlink))
 			if err != nil {
 				if accessDenied(err) {
@@ -1191,28 +1220,30 @@ func use(version string, cpuarch string, reload ...bool) {
 			}
 		}
 
-		// Create new symlink
+		// 创建新的符号链接
 		var ok bool
-		// ok, err = runElevated(fmt.Sprintf(`"%s" cmd /C mklink /D "%s" "%s"`, filepath.Join(env.root, "elevate.cmd"), filepath.Clean(env.symlink), filepath.Join(env.root, "v"+version)))
+		// 使用提升权限创建符号链接
 		ok, err = elevatedRun("mklink", "/D", filepath.Clean(env.symlink), filepath.Join(env.root, "v"+version))
 		if err != nil {
+			// 处理权限不足错误
 			if strings.Contains(err.Error(), "not have sufficient privilege") || strings.Contains(strings.ToLower(err.Error()), "access is denied") {
+				// 重试一次
 				ok, err = elevatedRun("mklink", "/D", filepath.Clean(env.symlink), filepath.Join(env.root, "v"+version))
 				if err != nil {
 					ok = false
 					status <- Status{Err: err, Done: true}
-					// fmt.Println(fmt.Sprint(err)) // + ": " + _stderr.String())
 				} else {
 					ok = true
 				}
 			} else if strings.Contains(err.Error(), "file already exists") {
+				// 处理链接已存在的情况
 				err = validSymlink(env.symlink)
 				if err != nil {
 					status <- Status{Err: err, Done: true}
 				}
 
+				// 尝试删除现有链接并重新加载
 				ok, err = elevatedRun("rmdir", filepath.Clean(env.symlink))
-				// ok, err = runElevated(fmt.Sprintf(`"%s" cmd /C rmdir "%s"`, filepath.Join(env.root, "elevate.cmd"), filepath.Clean(env.symlink)))
 				reloadable := true
 				if len(reload) > 0 {
 					reloadable = reload[0]
@@ -1231,7 +1262,7 @@ func use(version string, cpuarch string, reload ...bool) {
 			status <- Status{Err: fmt.Errorf("failed to elevate permissions to create symlink"), Done: true}
 		}
 
-		// Use the assigned CPU architecture
+		// 处理架构相关的可执行文件
 		cpuarch = arch.Validate(cpuarch)
 		nodepath := filepath.Join(env.root, "v"+version, "node.exe")
 		node32path := filepath.Join(env.root, "v"+version, "node32.exe")
@@ -1239,12 +1270,15 @@ func use(version string, cpuarch string, reload ...bool) {
 		node32exists := file.Exists(node32path)
 		node64exists := file.Exists(node64path)
 		nodeexists := file.Exists(nodepath)
+
+		// 处理32位架构需求
 		if node32exists && cpuarch == "32" { // user wants 32, but node.exe is 64
 			if nodeexists {
 				utility.Rename(nodepath, node64path) // node.exe -> node64.exe
 			}
 			utility.Rename(node32path, nodepath) // node32.exe -> node.exe
 		}
+		// 处理64位架构需求
 		if node64exists && cpuarch == "64" { // user wants 64, but node.exe is 32
 			if nodeexists {
 				utility.Rename(nodepath, node32path) // node.exe -> node32.exe
@@ -1252,10 +1286,11 @@ func use(version string, cpuarch string, reload ...bool) {
 			utility.Rename(node64path, nodepath) // node64.exe -> node.exe
 		}
 
+		// 标记操作完成
 		status <- Status{Done: true}
 	}()
 
-	// Wait for the process to complete before exiting
+	// 等待所有goroutine完成
 	wg.Wait()
 	os.Exit(exitCode)
 }
@@ -1389,9 +1424,12 @@ func list(listtype string) {
 	}
 }
 
+// enable 启用nvm功能，自动查找并使用已安装的node.js版本
 func enable() {
 	dir := ""
+	// 读取env.root目录下的所有文件
 	files, _ := ioutil.ReadDir(env.root)
+	// 遍历查找包含"v"前缀的目录(表示node.js版本目录)
 	for _, f := range files {
 		if f.IsDir() {
 			isnode, _ := regexp.MatchString("v", f.Name())
@@ -1401,25 +1439,30 @@ func enable() {
 		}
 	}
 	fmt.Println("nvm enabled")
+	// 如果找到node.js版本目录，则使用该版本
 	if dir != "" {
 		use(strings.Trim(regexp.MustCompile("v").ReplaceAllString(dir, ""), " \n\r"), env.arch)
 	} else {
+		// 未找到任何node.js版本时的提示
 		fmt.Println("No versions of node.js found. Try installing the latest by typing nvm install latest")
 	}
 }
 
+// disable 函数用于禁用当前nvm环境
 func disable() {
 	// ok, err := runElevated(fmt.Sprintf(`"%s" cmd /C rmdir "%s"`, filepath.Join(env.root, "elevate.cmd"), filepath.Clean(env.symlink)))
+	// 检查并处理无效的符号链接
 	abortOnBadSymlink(env.symlink)
+	// 以管理员权限运行rmdir命令删除符号链接
 	ok, err := elevatedRun("rmdir", filepath.Clean(env.symlink))
 	if !ok {
-		return
+		return // 如果操作未成功，直接返回
 	}
 	if err != nil {
-		fmt.Print(fmt.Sprint(err))
+		fmt.Print(fmt.Sprint(err)) // 打印错误信息
 	}
 
-	fmt.Println("nvm disabled")
+	fmt.Println("nvm disabled") // 输出禁用成功信息
 }
 
 const (
@@ -1853,27 +1896,34 @@ func getLTS() string {
 	return ltsList[0]
 }
 
+// updateRootDir 更新根目录路径并迁移必要的命令文件
 func updateRootDir(path string) {
+	// 检查新路径是否存在
 	_, err := os.Stat(path)
 	if err != nil {
 		fmt.Println(path + " does not exist or could not be found.")
 		return
 	}
 
+	// 保存当前根目录并更新为新路径
 	currentRoot := env.root
 	env.root = filepath.Clean(path)
 
-	// Copy command files
+	// 复制必要的命令文件到新目录
 	os.Link(filepath.Clean(currentRoot+"/elevate.cmd"), filepath.Clean(env.root+"/elevate.cmd"))
 	os.Link(filepath.Clean(currentRoot+"/elevate.vbs"), filepath.Clean(env.root+"/elevate.vbs"))
 
+	// 保存设置
 	saveSettings()
 
+	// 如果根目录发生变化，打印变更信息
 	if currentRoot != env.root {
 		fmt.Println("\nRoot has been changed from " + currentRoot + " to " + path)
 	}
 }
 
+// elevatedRun 以提升的权限运行指定命令
+// 首先尝试普通方式运行，失败后使用 elevate.cmd 提升权限再次尝试
 func elevatedRun(name string, arg ...string) (bool, error) {
 	ok, err := run("cmd", nil, append([]string{"/C", name}, arg...)...)
 	if err != nil {
@@ -1900,12 +1950,23 @@ func run(name string, dir *string, arg ...string) (bool, error) {
 	return true, nil
 }
 
+// runElevated 以管理员权限运行指定命令
+// 参数:
+//
+//	command: 要执行的命令字符串
+//	forceUAC: 可选参数，控制是否强制使用UAC提权
+//
+// 返回值:
+//
+//	bool: 执行是否成功
+//	error: 执行过程中遇到的错误
 func runElevated(command string, forceUAC ...bool) (bool, error) {
 	uac := true //false
 	if len(forceUAC) > 0 {
 		uac = forceUAC[0]
 	}
 
+	// 使用UAC提权执行命令
 	if uac {
 		// Alternative elevation option at stackoverflow.com/questions/31558066/how-to-ask-for-administer-privileges-on-windows-with-go
 		cmd := exec.Command(filepath.Join(env.root, "elevate.cmd"), command)
@@ -1920,6 +1981,7 @@ func runElevated(command string, forceUAC ...bool) (bool, error) {
 		}
 	}
 
+	// 创建cmd进程并设置命令行参数
 	c := exec.Command("cmd") // dummy executable that actually needs to exist but we'll overwrite using .SysProcAttr
 
 	// Based on the official docs, syscall.SysProcAttr.CmdLine doesn't exist.
@@ -1931,9 +1993,11 @@ func runElevated(command string, forceUAC ...bool) (bool, error) {
 	var stderr bytes.Buffer
 	c.Stderr = &stderr
 
+	// 执行命令并处理错误
 	err := c.Run()
 	if err != nil {
 		msg := stderr.String()
+		// 如果权限不足且启用了UAC，尝试不使用UAC再次执行
 		if strings.Contains(msg, "not have sufficient privilege") && uac {
 			return runElevated(command, false)
 		}
