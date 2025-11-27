@@ -46,7 +46,7 @@ import (
 
 // NvmVersion 表示当前NVM的版本号
 // 在构建时会被替换为实际版本号
-var NvmVersion = "1.2.3"
+var NvmVersion = "1.2.4"
 
 // Environment 结构体存储NVM的环境配置
 type Environment struct {
@@ -1394,7 +1394,7 @@ func list(listtype string) {
 			}
 		}
 		if len(v) == 0 {
-			fmt.Println("No installations recognized.")
+			fmt.Printf("No installations recognized. (%s)", env.root)
 		}
 	} else {
 		_, lts, current, stable, unstable, _ := node.GetAvailable()
